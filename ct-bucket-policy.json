@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AWSCloudTrailAclCheck",
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudtrail.amazonaws.com" },
+      "Action": "s3:GetBucketAcl",
+      "Resource": "arn:aws:s3:::ct-logs-291759414849-us-east-1-20251003013556"
+    },
+    {
+      "Sid": "AWSCloudTrailWrite",
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudtrail.amazonaws.com" },
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::ct-logs-291759414849-us-east-1-20251003013556/AWSLogs/291759414849/*",
+      "Condition": { "StringEquals": { "s3:x-amz-acl": "bucket-owner-full-control" } }
+    }
+  ]
+}

@@ -61,7 +61,7 @@ def extract_buckets_from_event(event):
 # -------- Step 1: Collect --------
 def collect_security_data(target_buckets=None):
     if target_buckets:
-        bucket_names = target_buckets                       # list[str]
+        bucket_names = target_buckets
     else:
         bucket_names = [b["Name"] for b in s3.list_buckets().get("Buckets", [])]
 
