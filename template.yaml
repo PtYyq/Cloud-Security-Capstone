@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 Auto-Remediation - Lambda + EventBridge + SNS + DynamoDB
+
+Parameters:
+  CodeS3Bucket:
+    Type: String
+    Default: medtech-cfn-artifacts-291759414849-us-east-1
+  CodeS3Key:
+    Type: String
+    Default: s3-ir/function.zip
+  EmailRecipient:
+    Type: String
+    Default: yongqiyu666@gmail.com
+  DynamoTableName:
+    Type: String
+    Default: S3AutoRemediationIncidents
+
+Resources:
+  # --- DynamoDB: create table ---
+  IncidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: S3AutoRemediationIncidents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: incident_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: incident_id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: alias/aws/dynamodb
+
+  # --- SNS: alert topic ---
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref EmailRecipient
+
+  # --- IAM: Lambda role ---
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: [lambda.amazonaws.com] }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaLogsS3SnsDdb
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # log
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: "*"
+              # S3
+              - Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketAcl
+                  - s3:GetPublicAccessBlock
+                  - s3:PutPublicAccessBlock
+                  - s3:PutBucketPublicAccessBlock
+                Resource: "*"
+              # SNS Topic
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref AlertTopic
+              # DynamoDB
+              - Effect: Allow
+                Action: dynamodb:PutItem
+                Resource: !GetAtt IncidentsTable.Arn
+
+  # --- Lambda ---
+  SecurityFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: lambda_handler.lambda_handler
+      Runtime: python3.9
+      Timeout: 60
+      MemorySize: 256
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        S3Bucket: !Ref CodeS3Bucket
+        S3Key: !Ref CodeS3Key
+      Environment:
+        Variables:
+          DRY_RUN: "false"
+          SNS_TOPIC_ARN: !Ref AlertTopic
+          DDB_TABLE: !Ref DynamoTableName
+      TracingConfig:
+        Mode: Active
+
+  # Optional: log expire date
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SecurityFunction}
+      RetentionInDays: 14
+
+  # --- EventBridge: event rule ---
+  S3PolicyChangeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source: ["aws.s3"]
+        detail-type: ["AWS API Call via CloudTrail"]
+        detail:
+          eventSource: ["s3.amazonaws.com"]
+          eventName:
+            - PutBucketAcl
+            - PutBucketPolicy
+            - CreateBucket
+            - DeletePublicAccessBlock
+            - PutPublicAccessBlock
+      Targets:
+        - Arn: !GetAtt SecurityFunction.Arn
+          Id: RealtimeS3Fix
+
+  AllowEventsInvokeLambdaRealtime:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SecurityFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt S3PolicyChangeRule.Arn
+
+Outputs:
+  LambdaName:
+    Value: !Ref SecurityFunction
+  SNSTopicArn:
+    Value: !Ref AlertTopic
+  DynamoTable:
+    Value: !Ref IncidentsTable
+  RealtimeRule:
+    Value: !Ref S3PolicyChangeRule
