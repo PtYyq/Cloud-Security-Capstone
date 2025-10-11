@@ -12,8 +12,5 @@ This project is an AWS-native, event-driven incident-response workflow that prev
 4. Setup SNS topic and email subscription (After setup, also put the variable into the lambda environment)
 5. Once set up, run `create_bucket.sh` to trigger the whole pipeline, can expect receiving email and blocking the public access
 
-## What can do next?
-1. Integrate more features into handler (e.g. whitelist that allow public access)
-2. **Must do:** record the response into DynamoDB
-3. Adding other components? Like CloudWatch to calculate statistic and send alerts
-4. Deployment automation (CloudFormation? Terraform?)
+## Deployment
+```./deploy.sh```
